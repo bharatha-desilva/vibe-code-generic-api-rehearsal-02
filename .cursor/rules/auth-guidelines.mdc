@@ -7,6 +7,7 @@ alwaysApply: true
 ## Authentication Endpoints
 
 This document outlines the authentication endpoints for the API, working with the `users` collection.
+For the moment check password in plain-text, no-ecription or hashing
 
 ### Base URL
 All authentication endpoints are prefixed with `/auth`
