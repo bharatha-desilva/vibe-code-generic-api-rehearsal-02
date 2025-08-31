@@ -1,0 +1,84 @@
+---
+alwaysApply: true
+---
+# Cursor AI Rules: FastAPI + MongoDB + GitHub + Render + Dynamic Filter Endpoint
+
+RULE: Generate FastAPI REST API
+DESCRIPTION: Detailed FastAPI REST API with MongoDB integration. JSON objects are saved as-is, without using Pydantic models. The entity/collection name is dynamic.
+
+INPUTS:
+  - API_NAME: FastAPIMongoAPI
+  - DATABASE: MongoDB Atlas
+  - USE_MODELS: false
+  - ENTITY_DYNAMIC: true
+  - GIT_REPO: https://github.com/bharatha-desilva/vibe-code-generic-api-rehearsal-02.git
+  - DESCRIPTION: >
+      API will have 6 endpoints: 
+        1. GET_ALL: Fetch all documents from the specified entity/collection.
+        2. GET_BY_ID: Fetch a single document by its MongoDB ObjectId.
+        3. SAVE_NEW: Save a new JSON object exactly as received in the request body.
+        4. UPDATE: Update an existing document by its ObjectId with JSON fields provided in the request.
+        5. GET_FILTERED: Fetch documents dynamically filtered by any query parameters.
+        6. DELETE_BY_ID: Delete document by key.
+  - ENDPOINTS:
+      - GET_ALL: /{entity}
+      - GET_BY_ID: /{entity}/id/{item_id}
+      - SAVE_NEW: /{entity}
+      - UPDATE: /{entity}/{item_id}
+      - GET_FILTERED: /{entity}/filter
+      - DELETE_BY_ID: /{entity}/{item_id}
+  - SERIALIZATION: Convert MongoDB ObjectId to string in all responses.
+  - REQUEST_BODY: Accept any JSON object without schema for save/update. GET_FILTERED uses query parameters.
+  - RESPONSE: Return saved, updated, deleted, or filtered documents with `_id` as string.
+
+OUTPUT:
+  FILES:
+    - main.py
+    - requirements.txt
+    - README.md
+    - .gitignore
+  INSTRUCTIONS:
+    - main.py: 
+        - Implement FastAPI REST API with endpoints as above.
+        - Use `pymongo` to connect to MongoDB:
+          ```python
+          MONGODB_URI = "mongodb+srv://nuwanwp:zXi15ByhNUNFEOOD@cluster0.gjas8wj.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+          MONGODB_DB = "fastapi_mongo_api"
+          ```
+        - Ensure dynamic entity access via `{entity}`.
+        - Add CORS middleware to allow all origins, headers, and methods.
+        - Add HTTP middleware to always include CORS headers.
+        - Include `serialize_doc` helper to convert `_id` to string.
+        - **Updated filter endpoint**: `GET /{entity}/filter`
+          - Accept any query parameters for filtering.
+          - Automatically convert:
+            - `"true"` / `"false"` → boolean
+            - Integers → int
+            - Floats → float
+            - Everything else → string
+          - Do **not convert `_id` to ObjectId** (treat as string to avoid Invalid ObjectId errors).
+          - Query the collection using `collection.find(filters)`.
+          - Return serialized documents.
+        - Include startup logic for Render:
+          ```python
+          import os, uvicorn
+          if __name__ == "__main__":
+              port = int(os.environ.get("PORT", 8000))
+              uvicorn.run("main:app", host="0.0.0.0", port=port)
+          ```
+    - requirements.txt: fastapi, uvicorn, pymongo, dnspython
+    - README.md: Instructions to run locally, push to GitHub repo `test-8`, deploy on Render
+    - .gitignore: Exclude __pycache__, .env, virtual environments
+
+POST_GENERATION:
+  - steps:
+      - description: Initialize git repo if it doesn't exist
+        run: git init
+      - description: Set GitHub remote
+        run: git remote set-url origin https://github.com/bharatha-desilva/vibe-code-generic-api-rehearsal-02.git
+      - description: Stage all generated files
+        run: git add .
+      - description: Commit changes if any
+        run: git commit -m "Initial commit from Cursor AI" || echo "Nothing to commit, skipping"
+      - description: Push to GitHub main branch
+        run: git branch -M main && git push -u origin main
