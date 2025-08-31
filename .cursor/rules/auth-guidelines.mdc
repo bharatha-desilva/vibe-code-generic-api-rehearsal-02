@@ -7,7 +7,7 @@ alwaysApply: true
 ## Authentication Endpoints
 
 This document outlines the authentication endpoints for the API, working with the `users` collection.
-For the moment check password in plain-text, no-ecription or hashing
+For the moment check password in plain-text, no-ecription or hashing.
 
 ### Base URL
 All authentication endpoints are prefixed with `/auth`
@@ -18,6 +18,7 @@ All authentication endpoints are prefixed with `/auth`
 **POST** `/auth/login`
 
 Authenticates a user and returns authentication tokens.
+If valid → return the user object with `_id` as string and set an HttpOnly cookie.
 
 **Request Body:**
 ```json
@@ -130,9 +131,10 @@ Authorization: Bearer <access_token>
 ```
 
 #### 4. Validate
-**POST** `/auth/validate`
+**GET** `/auth/validate`
 
 Validates the current authentication token and returns token status.
+If valid → return the user object with `_id` as string and set an HttpOnly cookie.
 
 **Headers:**
 ```
@@ -192,6 +194,7 @@ Authorization: Bearer <access_token>
 - Log authentication events for security monitoring
 - Passwords should be hashed using bcrypt or similar
 - Consider implementing 2FA for enhanced security
+- If valid → return the user object with `_id` as string and set an HttpOnly cookie.
 
 ### Database Collection: `users`
 
@@ -225,6 +228,7 @@ All authentication endpoints are prefixed with `/auth`
 **POST** `/auth/login`
 
 Authenticates a user and returns authentication tokens.
+If valid → return the user object with `_id` as string and set an HttpOnly cookie.
 
 **Request Body:**
 ```json
@@ -337,9 +341,10 @@ Authorization: Bearer <access_token>
 ```
 
 #### 4. Validate
-**POST** `/auth/validate`
+**GET** `/auth/validate`
 
 Validates the current authentication token and returns token status.
+If valid → return the user object with `_id` as string and set an HttpOnly cookie.
 
 **Headers:**
 ```
@@ -399,6 +404,7 @@ Authorization: Bearer <access_token>
 - Log authentication events for security monitoring
 - Passwords should be hashed using bcrypt or similar
 - Consider implementing 2FA for enhanced security
+- If valid → return the user object with `_id` as string and set an HttpOnly cookie.
 
 ### Database Collection: `users`
 

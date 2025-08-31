@@ -1,144 +1,131 @@
-# FastAPI MongoDB Generic API with Authentication
+# FastAPI MongoDB Dynamic API with Authentication
 
-A dynamic FastAPI REST API with MongoDB integration that supports both generic entity operations and user authentication. The API accepts any JSON objects without requiring predefined schemas and includes comprehensive authentication endpoints.
+A dynamic REST API built with FastAPI and MongoDB that provides both CRUD operations for any entity/collection and JWT-based authentication.
 
 ## Features
 
-### Dynamic Entity Endpoints
-- **GET_ALL**: `GET /{entity}` - Fetch all documents from any collection
-- **GET_BY_ID**: `GET /{entity}/id/{item_id}` - Fetch a single document by ObjectId
-- **SAVE_NEW**: `POST /{entity}` - Save any JSON object to a collection
-- **UPDATE**: `PUT /{entity}/{item_id}` - Update existing document with any fields
-- **GET_FILTERED**: `GET /{entity}/filter` - Dynamic filtering using query parameters
-- **DELETE_BY_ID**: `DELETE /{entity}/{item_id}` - Delete document by ObjectId
+### Dynamic CRUD Operations
+- **GET All**: `GET /{entity}` - Fetch all documents from any collection
+- **GET By ID**: `GET /{entity}/id/{item_id}` - Fetch single document by MongoDB ObjectId
+- **CREATE**: `POST /{entity}` - Save new JSON object to any collection
+- **UPDATE**: `PUT /{entity}/{item_id}` - Update existing document by ObjectId
+- **FILTER**: `GET /{entity}/filter` - Dynamic filtering using query parameters
+- **DELETE**: `DELETE /{entity}/{item_id}` - Delete document by ObjectId
 
-### Authentication Endpoints
-- **LOGIN**: `POST /auth/login` - Authenticate user and get JWT tokens
-- **LOGOUT**: `POST /auth/logout` - Invalidate user session
-- **PROFILE**: `GET /auth/profile` - Get current user profile
-- **VALIDATE**: `POST /auth/validate` - Validate JWT token
+### Authentication System
+- **Login**: `POST /auth/login` - Authenticate and receive JWT tokens
+- **Logout**: `POST /auth/logout` - Invalidate tokens and clear cookies
+- **Profile**: `GET /auth/profile` - Get current user profile (protected)
+- **Validate**: `GET /auth/validate` - Validate current JWT token
 
-## Technology Stack
+### Additional Features
+- **CORS enabled** for all origins, headers, and methods
+- **Automatic type conversion** for query parameters (strings, numbers, booleans)
+- **MongoDB ObjectId serialization** to strings in responses
+- **JWT authentication** with HttpOnly cookies
+- **Health check** endpoint at `/health`
+- **Automatic timestamps** (created_at, updated_at) for documents
 
-- **FastAPI** - Modern Python web framework
-- **MongoDB Atlas** - Cloud database
-- **PyMongo** - MongoDB driver for Python
-- **JWT** - JSON Web Tokens for authentication
-- **Uvicorn** - ASGI server
+## Prerequisites
+
+- Python 3.8+
+- MongoDB Atlas account (or local MongoDB instance)
+- Git
 
 ## Local Development Setup
 
-### Prerequisites
-- Python 3.8+
-- pip (Python package installer)
+### 1. Clone the Repository
 
-### Installation
+```bash
+git clone https://github.com/bharatha-desilva/vibe-code-generic-api-rehearsal-02.git
+cd vibe-code-generic-api-rehearsal-02
+```
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/bharatha-desilva/vibe-code-generic-api-rehearsal-02.git
-   cd vibe-code-generic-api-rehearsal-02
-   ```
+### 2. Create Virtual Environment
 
-2. **Create virtual environment**
-   ```bash
-   python -m venv venv
-   
-   # Windows
-   venv\Scripts\activate
-   
-   # Linux/Mac
-   source venv/bin/activate
-   ```
+```bash
+# Windows
+python -m venv venv
+venv\Scripts\activate
 
-3. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+# macOS/Linux
+python3 -m venv venv
+source venv/bin/activate
+```
 
-4. **Run the application**
-   ```bash
-   python main.py
-   ```
+### 3. Install Dependencies
 
-   Or using uvicorn directly:
-   ```bash
-   uvicorn main:app --reload --host 0.0.0.0 --port 8000
-   ```
+```bash
+pip install -r requirements.txt
+```
 
-5. **Access the API**
-   - API Base URL: `http://localhost:8000`
-   - Interactive API Documentation: `http://localhost:8000/docs`
-   - Alternative Documentation: `http://localhost:8000/redoc`
+### 4. Configure Environment (Optional)
 
-## API Usage Examples
+The API is pre-configured with MongoDB Atlas credentials. To use your own database:
+
+1. Update the MongoDB connection string in `main.py`:
+```python
+MONGODB_URI = "your-mongodb-connection-string"
+MONGODB_DB = "your-database-name"
+```
+
+2. Update the JWT secret (recommended for production):
+```python
+JWT_SECRET = "your-secure-secret-key"
+```
+
+### 5. Run the Application
+
+```bash
+# Development server with auto-reload
+uvicorn main:app --reload
+
+# Or run directly
+python main.py
+```
+
+The API will be available at: `http://localhost:8000`
+
+### 6. API Documentation
+
+- **Swagger UI**: `http://localhost:8000/docs`
+- **ReDoc**: `http://localhost:8000/redoc`
+
+## Usage Examples
 
 ### Authentication
 
-#### 1. Login
+#### 1. Create a Test User (using dynamic API)
+```bash
+curl -X POST "http://localhost:8000/users" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "testuser",
+    "email": "test@example.com",
+    "password": "testpassword",
+    "role": "user"
+  }'
+```
+
+#### 2. Login
 ```bash
 curl -X POST "http://localhost:8000/auth/login" \
   -H "Content-Type: application/json" \
   -d '{
-    "username": "user@example.com",
-    "password": "userpassword"
+    "username": "testuser",
+    "password": "testpassword"
   }'
 ```
 
-#### 2. Access Protected Endpoints
+#### 3. Access Protected Endpoint
 ```bash
 curl -X GET "http://localhost:8000/auth/profile" \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
-### Dynamic Entity Operations
+### Dynamic CRUD Operations
 
-#### 1. Create a new user
-```bash
-curl -X POST "http://localhost:8000/users" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "username": "testuser",
-    "password": "testpass",
-    "role": "user",
-    "is_active": true
-  }'
-```
-
-#### 2. Get all users
-```bash
-curl -X GET "http://localhost:8000/users"
-```
-
-#### 3. Get user by ID
-```bash
-curl -X GET "http://localhost:8000/users/id/USER_OBJECT_ID"
-```
-
-#### 4. Update user
-```bash
-curl -X PUT "http://localhost:8000/users/USER_OBJECT_ID" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "role": "admin"
-  }'
-```
-
-#### 5. Filter users
-```bash
-curl -X GET "http://localhost:8000/users/filter?role=admin&is_active=true"
-```
-
-#### 6. Delete user
-```bash
-curl -X DELETE "http://localhost:8000/users/USER_OBJECT_ID"
-```
-
-### Working with Any Entity
-
-The API works with any entity name. For example, to work with "products":
-
+#### 1. Create Documents
 ```bash
 # Create a product
 curl -X POST "http://localhost:8000/products" \
@@ -150,27 +137,65 @@ curl -X POST "http://localhost:8000/products" \
     "in_stock": true
   }'
 
+# Create a blog post
+curl -X POST "http://localhost:8000/posts" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "My First Post",
+    "content": "Hello world!",
+    "author": "John Doe",
+    "published": false
+  }'
+```
+
+#### 2. Get All Documents
+```bash
 # Get all products
 curl -X GET "http://localhost:8000/products"
 
-# Filter products by category
-curl -X GET "http://localhost:8000/products/filter?category=electronics&in_stock=true"
+# Get all posts
+curl -X GET "http://localhost:8000/posts"
 ```
 
-## Database Configuration
+#### 3. Filter Documents
+```bash
+# Filter products by category and stock status
+curl -X GET "http://localhost:8000/products/filter?category=electronics&in_stock=true"
 
-The application connects to MongoDB Atlas using the following configuration:
+# Filter posts by author
+curl -X GET "http://localhost:8000/posts/filter?author=John%20Doe"
+```
 
-- **Connection String**: Pre-configured for the provided cluster
-- **Database Name**: `fastapi_mongo_api`
-- **Collections**: Dynamic - created automatically when first used
+#### 4. Get Document by ID
+```bash
+curl -X GET "http://localhost:8000/products/id/OBJECT_ID_HERE"
+```
 
-### Users Collection Schema
+#### 5. Update Document
+```bash
+curl -X PUT "http://localhost:8000/products/OBJECT_ID_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "price": 899.99,
+    "in_stock": false
+  }'
+```
+
+#### 6. Delete Document
+```bash
+curl -X DELETE "http://localhost:8000/products/OBJECT_ID_HERE"
+```
+
+## Database Schema
+
+### Users Collection
+The authentication system expects a `users` collection with the following structure:
+
 ```json
 {
   "_id": "ObjectId",
   "email": "string (unique)",
-  "password": "string (plain text for now)",
+  "password": "string (plain text for demo - hash in production)",
   "username": "string",
   "role": "string",
   "created_at": "Date",
@@ -181,114 +206,96 @@ The application connects to MongoDB Atlas using the following configuration:
 }
 ```
 
-## Deployment
+### Dynamic Collections
+Any other collection can be created dynamically by making requests to `/{entity}` endpoints.
 
-### GitHub Repository Setup
+## Deployment on Render
 
-1. **Push to GitHub**
-   ```bash
-   git init
-   git remote add origin https://github.com/bharatha-desilva/vibe-code-generic-api-rehearsal-02.git
-   git add .
-   git commit -m "Initial commit"
-   git branch -M main
-   git push -u origin main
-   ```
+### 1. Push to GitHub
 
-### Render Deployment
+Ensure your code is pushed to the GitHub repository:
 
-1. **Create Render Account**
-   - Go to [render.com](https://render.com)
-   - Sign up or log in
+```bash
+git add .
+git commit -m "Initial commit"
+git push origin main
+```
 
-2. **Deploy from GitHub**
-   - Click "New +" → "Web Service"
-   - Connect your GitHub repository
-   - Select the repository: `vibe-code-generic-api-rehearsal-02`
+### 2. Deploy on Render
 
-3. **Configure Deployment**
-   - **Name**: `fastapi-mongo-api`
+1. Go to [Render.com](https://render.com) and sign up/login
+2. Click "New +" and select "Web Service"
+3. Connect your GitHub repository: `https://github.com/bharatha-desilva/vibe-code-generic-api-rehearsal-02.git`
+4. Configure the service:
+   - **Name**: `fastapi-mongo-api` (or your preferred name)
    - **Environment**: `Python 3`
    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `python main.py`
+5. Click "Create Web Service"
 
-4. **Environment Variables** (Optional)
-   - Add any environment variables if needed
-   - The app will use PORT from Render automatically
+### 3. Environment Variables (Optional)
 
-5. **Deploy**
-   - Click "Create Web Service"
-   - Render will automatically deploy your application
+If you want to use environment variables for sensitive data:
 
-### Deployment URL
-After deployment, your API will be available at:
-`https://your-app-name.onrender.com`
+- `MONGODB_URI`: Your MongoDB connection string
+- `JWT_SECRET`: Your JWT secret key
+- `PORT`: Port number (Render sets this automatically)
+
+## API Endpoints Reference
+
+### Authentication Endpoints
+
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| POST | `/auth/login` | User login | No |
+| POST | `/auth/logout` | User logout | Yes |
+| GET | `/auth/profile` | Get user profile | Yes |
+| GET | `/auth/validate` | Validate token | Yes |
+
+### Dynamic CRUD Endpoints
+
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| GET | `/{entity}` | Get all documents | No |
+| GET | `/{entity}/id/{item_id}` | Get document by ID | No |
+| POST | `/{entity}` | Create new document | No |
+| PUT | `/{entity}/{item_id}` | Update document | No |
+| GET | `/{entity}/filter` | Filter documents | No |
+| DELETE | `/{entity}/{item_id}` | Delete document | No |
+
+### Utility Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | API information |
+| GET | `/health` | Health check |
+| GET | `/docs` | Swagger UI |
+| GET | `/redoc` | ReDoc documentation |
 
 ## Security Notes
 
-- **JWT Secret**: Change `JWT_SECRET_KEY` in production
-- **Password Security**: Currently using plain text passwords (as specified in guidelines)
-- **HTTPS**: Render provides HTTPS automatically
-- **CORS**: Currently allows all origins for development
+⚠️ **Important for Production:**
 
-## API Response Format
+1. **Change JWT Secret**: Update `JWT_SECRET` to a secure, random string
+2. **Hash Passwords**: Currently using plain text passwords for demo - implement bcrypt hashing
+3. **HTTPS**: Enable HTTPS and set `secure=True` for cookies
+4. **CORS**: Restrict CORS origins to your frontend domains
+5. **Rate Limiting**: Implement rate limiting for authentication endpoints
+6. **Input Validation**: Add proper input validation and sanitization
+7. **Environment Variables**: Move sensitive configurations to environment variables
 
-### Success Response
-```json
-{
-  "success": true,
-  "message": "Operation successful",
-  "data": {
-    // Response data
-  }
-}
-```
+## Contributing
 
-### Error Response
-```json
-{
-  "success": false,
-  "message": "Error description",
-  "error": "ERROR_CODE"
-}
-```
-
-## Error Codes
-
-| Code | Description |
-|------|-------------|
-| `INVALID_CREDENTIALS` | Login credentials are incorrect |
-| `INVALID_TOKEN` | JWT token is invalid or malformed |
-| `TOKEN_EXPIRED` | JWT token has expired |
-| `USER_NOT_FOUND` | User does not exist |
-| `ACCOUNT_DISABLED` | User account is disabled |
-
-## Development
-
-### Project Structure
-```
-├── main.py           # Main FastAPI application
-├── requirements.txt  # Python dependencies
-├── README.md        # Project documentation
-├── .gitignore       # Git ignore rules
-└── .git/           # Git repository
-```
-
-### Adding New Features
-1. Modify `main.py` to add new endpoints
-2. Update `requirements.txt` if new dependencies are needed
-3. Test locally with `python main.py`
-4. Commit and push changes to GitHub
-5. Render will automatically redeploy
-
-## Support
-
-For issues and questions:
-1. Check the interactive API documentation at `/docs`
-2. Review this README for common usage patterns
-3. Verify MongoDB connection and collection structure
-4. Check server logs for detailed error information
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Make your changes and commit: `git commit -m 'Add feature'`
+4. Push to the branch: `git push origin feature-name`
+5. Submit a pull request
 
 ## License
 
-This project is open source and available under the MIT License.
+This project is licensed under the MIT License.
+
+## Support
+
+For issues and questions, please open an issue on the GitHub repository.

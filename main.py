@@ -1,28 +1,33 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pymongo import MongoClient
 from bson import ObjectId
+from bson.errors import InvalidId
 from datetime import datetime, timedelta
 import jwt
 import os
 import uvicorn
-from typing import Optional, Dict, Any
+from typing import Dict, Any, Optional
 
-# MongoDB Configuration
+# MongoDB configuration
 MONGODB_URI = "mongodb+srv://nuwanwp:zXi15ByhNUNFEOOD@cluster0.gjas8wj.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 MONGODB_DB = "fastapi_mongo_api"
 
-# JWT Configuration
-JWT_SECRET_KEY = "your-secret-key-change-in-production"
+# JWT configuration
+JWT_SECRET = "your-secret-key-change-in-production"
 JWT_ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+JWT_EXPIRATION_HOURS = 1
 
 # Initialize FastAPI app
-app = FastAPI(title="FastAPI MongoDB Generic API with Authentication", version="1.0.0")
+app = FastAPI(
+    title="FastAPI MongoDB Dynamic API with Authentication",
+    description="Dynamic REST API with MongoDB and JWT Authentication",
+    version="1.0.0"
+)
 
-# Add CORS middleware
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -31,7 +36,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize MongoDB client
+# MongoDB client
 client = MongoClient(MONGODB_URI)
 db = client[MONGODB_DB]
 
@@ -39,55 +44,38 @@ db = client[MONGODB_DB]
 security = HTTPBearer()
 
 def serialize_doc(doc):
-    """Convert MongoDB ObjectId to string for JSON serialization"""
-    if doc and "_id" in doc:
+    """Convert MongoDB document to JSON-serializable format"""
+    if doc is None:
+        return None
+    if isinstance(doc, dict) and "_id" in doc:
         doc["_id"] = str(doc["_id"])
     return doc
 
-def serialize_docs(docs):
-    """Convert list of MongoDB documents"""
-    return [serialize_doc(doc) for doc in docs]
-
-def convert_value(value: str):
-    """Convert string values to appropriate types for MongoDB queries"""
-    if value.lower() == "true":
-        return True
-    elif value.lower() == "false":
-        return False
-    elif value.isdigit():
-        return int(value)
-    else:
-        try:
-            return float(value)
-        except ValueError:
-            return value
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_access_token(user_id: str) -> str:
     """Create JWT access token"""
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
-    return encoded_jwt
+    expiration = datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS)
+    payload = {
+        "user_id": user_id,
+        "exp": expiration,
+        "iat": datetime.utcnow()
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
-def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Verify JWT token and return user data"""
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
+    """Verify JWT token and return user_id"""
     try:
-        payload = jwt.decode(credentials.credentials, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-        user_id: str = payload.get("sub")
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get("user_id")
         if user_id is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token"
             )
-        return {"user_id": user_id, "payload": payload}
+        return user_id
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired"
+            detail="Token expired"
         )
     except jwt.JWTError:
         raise HTTPException(
@@ -95,30 +83,49 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
             detail="Invalid token"
         )
 
-# Authentication Endpoints
+def convert_query_params(params: dict) -> dict:
+    """Convert query parameters to appropriate types"""
+    converted = {}
+    for key, value in params.items():
+        if key == "_id":
+            # Don't convert _id to ObjectId to avoid Invalid ObjectId errors
+            converted[key] = value
+        elif value.lower() == "true":
+            converted[key] = True
+        elif value.lower() == "false":
+            converted[key] = False
+        elif value.isdigit():
+            converted[key] = int(value)
+        elif value.replace(".", "", 1).isdigit():
+            converted[key] = float(value)
+        else:
+            converted[key] = value
+    return converted
 
+# Authentication endpoints
 @app.post("/auth/login")
-async def login(credentials: dict):
+async def login(request: Request):
     """Authenticate user and return tokens"""
     try:
-        username = credentials.get("username")
-        password = credentials.get("password")
+        body = await request.json()
+        username = body.get("username")
+        password = body.get("password")
         
         if not username or not password:
-            return JSONResponse(
+            raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                content={
-                    "success": False,
-                    "message": "Username and password are required",
-                    "error": "MISSING_CREDENTIALS"
-                }
+                detail="Username and password are required"
             )
         
         # Find user in users collection
         users_collection = db["users"]
-        user = users_collection.find_one({"$or": [{"email": username}, {"username": username}]})
+        user = users_collection.find_one({"username": username})
         
         if not user:
+            # Try finding by email
+            user = users_collection.find_one({"email": username})
+        
+        if not user or user.get("password") != password:
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 content={
@@ -127,40 +134,6 @@ async def login(credentials: dict):
                     "error": "INVALID_CREDENTIALS"
                 }
             )
-        
-        # For now, check password in plain text (as specified in guidelines)
-        if user.get("password") != password:
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={
-                    "success": False,
-                    "message": "Invalid credentials",
-                    "error": "INVALID_CREDENTIALS"
-                }
-            )
-        
-        # Check if account is active
-        if not user.get("is_active", True):
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={
-                    "success": False,
-                    "message": "Account is disabled",
-                    "error": "ACCOUNT_DISABLED"
-                }
-            )
-        
-        # Create access token
-        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        access_token = create_access_token(
-            data={"sub": str(user["_id"])}, expires_delta=access_token_expires
-        )
-        
-        # Create refresh token (longer expiration)
-        refresh_token_expires = timedelta(days=7)
-        refresh_token = create_access_token(
-            data={"sub": str(user["_id"]), "type": "refresh"}, expires_delta=refresh_token_expires
-        )
         
         # Update last login
         users_collection.update_one(
@@ -168,54 +141,80 @@ async def login(credentials: dict):
             {"$set": {"last_login": datetime.utcnow()}}
         )
         
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content={
-                "success": True,
-                "message": "Login successful",
-                "data": {
-                    "user": {
-                        "id": str(user["_id"]),
-                        "email": user.get("email"),
-                        "username": user.get("username"),
-                        "role": user.get("role", "user")
-                    },
-                    "tokens": {
-                        "access_token": access_token,
-                        "refresh_token": refresh_token,
-                        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60
-                    }
+        # Create tokens
+        user_id = str(user["_id"])
+        access_token = create_access_token(user_id)
+        refresh_token = create_access_token(user_id)  # Simplified - same token for demo
+        
+        # Serialize user data
+        user_data = serialize_doc(user)
+        user_data.pop("password", None)  # Remove password from response
+        
+        response = JSONResponse(content={
+            "success": True,
+            "message": "Login successful",
+            "data": {
+                "user": {
+                    "id": user_data["_id"],
+                    "email": user_data.get("email", ""),
+                    "username": user_data.get("username", ""),
+                    "role": user_data.get("role", "user")
+                },
+                "tokens": {
+                    "access_token": access_token,
+                    "refresh_token": refresh_token,
+                    "expires_in": JWT_EXPIRATION_HOURS * 3600
                 }
             }
+        })
+        
+        # Set HttpOnly cookie
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            secure=False,  # Set to True in production with HTTPS
+            samesite="lax"
         )
         
+        return response
+        
     except Exception as e:
-        return JSONResponse(
+        raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={
-                "success": False,
-                "message": "Internal server error",
-                "error": str(e)
-            }
+            detail=f"Login failed: {str(e)}"
         )
 
 @app.post("/auth/logout")
-async def logout(request_body: dict, current_user: dict = Depends(verify_token)):
+async def logout(user_id: str = Depends(verify_token)):
     """Logout user and invalidate tokens"""
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content={
+    try:
+        response = JSONResponse(content={
             "success": True,
             "message": "Logout successful"
-        }
-    )
+        })
+        
+        # Clear the HttpOnly cookie
+        response.delete_cookie(key="access_token")
+        
+        return response
+        
+    except Exception as e:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={
+                "success": False,
+                "message": "Invalid or expired token",
+                "error": "INVALID_TOKEN"
+            }
+        )
 
 @app.get("/auth/profile")
-async def get_profile(current_user: dict = Depends(verify_token)):
+async def get_profile(user_id: str = Depends(verify_token)):
     """Get current user profile"""
     try:
         users_collection = db["users"]
-        user = users_collection.find_one({"_id": ObjectId(current_user["user_id"])})
+        user = users_collection.find_one({"_id": ObjectId(user_id)})
         
         if not user:
             return JSONResponse(
@@ -227,57 +226,67 @@ async def get_profile(current_user: dict = Depends(verify_token)):
                 }
             )
         
-        user_data = {
-            "id": str(user["_id"]),
-            "email": user.get("email"),
-            "username": user.get("username"),
-            "role": user.get("role", "user"),
-            "created_at": user.get("created_at", "").isoformat() if user.get("created_at") else None,
-            "updated_at": user.get("updated_at", "").isoformat() if user.get("updated_at") else None,
-            "last_login": user.get("last_login", "").isoformat() if user.get("last_login") else None
-        }
+        user_data = serialize_doc(user)
+        user_data.pop("password", None)  # Remove password from response
         
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content={
-                "success": True,
-                "message": "Profile retrieved successfully",
-                "data": {
-                    "user": user_data
+        return {
+            "success": True,
+            "message": "Profile retrieved successfully",
+            "data": {
+                "user": {
+                    "id": user_data["_id"],
+                    "email": user_data.get("email", ""),
+                    "username": user_data.get("username", ""),
+                    "role": user_data.get("role", "user"),
+                    "created_at": user_data.get("created_at", ""),
+                    "updated_at": user_data.get("updated_at", ""),
+                    "last_login": user_data.get("last_login", "")
                 }
             }
-        )
+        }
         
     except Exception as e:
         return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             content={
                 "success": False,
-                "message": "Internal server error",
-                "error": str(e)
+                "message": "Invalid or expired token",
+                "error": "INVALID_TOKEN"
             }
         )
 
-@app.post("/auth/validate")
-async def validate_token(current_user: dict = Depends(verify_token)):
+@app.get("/auth/validate")
+async def validate_token(user_id: str = Depends(verify_token)):
     """Validate current token"""
     try:
-        payload = current_user["payload"]
-        expires_at = datetime.fromtimestamp(payload["exp"])
+        users_collection = db["users"]
+        user = users_collection.find_one({"_id": ObjectId(user_id)})
         
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content={
-                "success": True,
-                "message": "Token is valid",
-                "data": {
-                    "valid": True,
-                    "user_id": current_user["user_id"],
-                    "expires_at": expires_at.isoformat(),
-                    "token_type": "access_token"
+        if not user:
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={
+                    "success": False,
+                    "message": "Invalid or expired token",
+                    "data": {
+                        "valid": False,
+                        "error": "USER_NOT_FOUND"
+                    }
                 }
+            )
+        
+        expiration = datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS)
+        
+        return {
+            "success": True,
+            "message": "Token is valid",
+            "data": {
+                "valid": True,
+                "user_id": user_id,
+                "expires_at": expiration.isoformat() + "Z",
+                "token_type": "access_token"
             }
-        )
+        }
         
     except Exception as e:
         return JSONResponse(
@@ -292,134 +301,167 @@ async def validate_token(current_user: dict = Depends(verify_token)):
             }
         )
 
-# Dynamic Entity Endpoints
-
+# Dynamic CRUD endpoints
 @app.get("/{entity}")
 async def get_all_documents(entity: str):
-    """Fetch all documents from the specified entity/collection"""
+    """Get all documents from a collection"""
     try:
         collection = db[entity]
         documents = list(collection.find())
-        return serialize_docs(documents)
+        serialized_docs = [serialize_doc(doc) for doc in documents]
+        return {"data": serialized_docs, "count": len(serialized_docs)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error fetching documents: {str(e)}")
 
 @app.get("/{entity}/id/{item_id}")
 async def get_document_by_id(entity: str, item_id: str):
-    """Fetch a single document by its MongoDB ObjectId"""
+    """Get a single document by ID"""
     try:
         collection = db[entity]
-        document = collection.find_one({"_id": ObjectId(item_id)})
+        try:
+            object_id = ObjectId(item_id)
+        except InvalidId:
+            raise HTTPException(status_code=400, detail="Invalid ObjectId format")
+        
+        document = collection.find_one({"_id": object_id})
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
+        
         return serialize_doc(document)
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error fetching document: {str(e)}")
 
 @app.post("/{entity}")
-async def save_new_document(entity: str, document: dict):
-    """Save a new JSON object exactly as received in the request body"""
+async def save_new_document(entity: str, request: Request):
+    """Save a new document"""
     try:
         collection = db[entity]
+        document = await request.json()
         
-        # Add timestamps if not present
-        if "created_at" not in document:
-            document["created_at"] = datetime.utcnow()
-        if "updated_at" not in document:
-            document["updated_at"] = datetime.utcnow()
-            
+        # Add timestamps
+        document["created_at"] = datetime.utcnow()
+        document["updated_at"] = datetime.utcnow()
+        
         result = collection.insert_one(document)
-        document["_id"] = str(result.inserted_id)
+        document["_id"] = result.inserted_id
+        
         return serialize_doc(document)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error saving document: {str(e)}")
 
 @app.put("/{entity}/{item_id}")
-async def update_document(entity: str, item_id: str, update_data: dict):
-    """Update an existing document by its ObjectId with JSON fields provided in the request"""
+async def update_document(entity: str, item_id: str, request: Request):
+    """Update a document by ID"""
     try:
         collection = db[entity]
+        try:
+            object_id = ObjectId(item_id)
+        except InvalidId:
+            raise HTTPException(status_code=400, detail="Invalid ObjectId format")
         
-        # Add updated timestamp
+        update_data = await request.json()
         update_data["updated_at"] = datetime.utcnow()
         
         result = collection.update_one(
-            {"_id": ObjectId(item_id)},
+            {"_id": object_id},
             {"$set": update_data}
         )
         
         if result.matched_count == 0:
             raise HTTPException(status_code=404, detail="Document not found")
         
-        updated_document = collection.find_one({"_id": ObjectId(item_id)})
+        updated_document = collection.find_one({"_id": object_id})
         return serialize_doc(updated_document)
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error updating document: {str(e)}")
 
 @app.get("/{entity}/filter")
-async def get_filtered_documents(entity: str, request):
-    """Fetch documents dynamically filtered by any query parameters"""
+async def get_filtered_documents(entity: str, request: Request):
+    """Get documents with dynamic filtering"""
     try:
         collection = db[entity]
-        
-        # Get query parameters
         query_params = dict(request.query_params)
         
-        # Build filter object
-        filters = {}
-        for key, value in query_params.items():
-            # Convert value types but don't convert _id to ObjectId
-            if key != "_id":
-                filters[key] = convert_value(value)
-            else:
-                filters[key] = value
+        if not query_params:
+            # If no filters, return all documents
+            documents = list(collection.find())
+        else:
+            # Convert query parameters to appropriate types
+            filters = convert_query_params(query_params)
+            documents = list(collection.find(filters))
         
-        # Query the collection
-        documents = list(collection.find(filters))
-        return serialize_docs(documents)
+        serialized_docs = [serialize_doc(doc) for doc in documents]
+        return {"data": serialized_docs, "count": len(serialized_docs), "filters": query_params}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error filtering documents: {str(e)}")
 
 @app.delete("/{entity}/{item_id}")
 async def delete_document(entity: str, item_id: str):
-    """Delete document by ObjectId"""
+    """Delete a document by ID"""
     try:
         collection = db[entity]
-        result = collection.delete_one({"_id": ObjectId(item_id)})
+        try:
+            object_id = ObjectId(item_id)
+        except InvalidId:
+            raise HTTPException(status_code=400, detail="Invalid ObjectId format")
+        
+        # Get the document before deleting to return it
+        document = collection.find_one({"_id": object_id})
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        result = collection.delete_one({"_id": object_id})
         
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Document not found")
         
-        return {"message": "Document deleted successfully", "deleted_id": item_id}
+        return {"message": "Document deleted successfully", "deleted_document": serialize_doc(document)}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error deleting document: {str(e)}")
 
 # Root endpoint
 @app.get("/")
 async def root():
-    """Root endpoint"""
+    """API root endpoint"""
     return {
-        "message": "FastAPI MongoDB Generic API with Authentication",
+        "message": "FastAPI MongoDB Dynamic API with Authentication",
         "version": "1.0.0",
         "endpoints": {
-            "auth": [
-                "POST /auth/login",
-                "POST /auth/logout",
-                "GET /auth/profile", 
-                "POST /auth/validate"
-            ],
-            "dynamic_entities": [
-                "GET /{entity}",
-                "GET /{entity}/id/{item_id}",
-                "POST /{entity}",
-                "PUT /{entity}/{item_id}",
-                "GET /{entity}/filter",
-                "DELETE /{entity}/{item_id}"
-            ]
+            "authentication": {
+                "login": "POST /auth/login",
+                "logout": "POST /auth/logout",
+                "profile": "GET /auth/profile",
+                "validate": "GET /auth/validate"
+            },
+            "dynamic_crud": {
+                "get_all": "GET /{entity}",
+                "get_by_id": "GET /{entity}/id/{item_id}",
+                "create": "POST /{entity}",
+                "update": "PUT /{entity}/{item_id}",
+                "filter": "GET /{entity}/filter",
+                "delete": "DELETE /{entity}/{item_id}"
+            }
         }
     }
 
-# Startup logic for Render
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    try:
+        # Test database connection
+        db.command("ping")
+        return {"status": "healthy", "database": "connected", "timestamp": datetime.utcnow().isoformat()}
+    except Exception as e:
+        return {"status": "unhealthy", "database": "disconnected", "error": str(e), "timestamp": datetime.utcnow().isoformat()}
+
+# Startup configuration for Render
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
